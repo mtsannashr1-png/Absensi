@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scan Absensi</title>
+<style>
+  /* Warna dan ukuran bisa diubah di sini */
+  :root { --hijau:#2e7d32; --oranye:#ef6c00; --biru:#1565c0; --merah:#c62828; --abu:#eceff1; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:16px; font-family: Arial, Helvetica, sans-serif; background:#f5f7f6; color:#1b1b1b; max-width:560px; margin-inline:auto; }
+  h1 { font-size:20px; margin:0 0 2px; }
+  .sub { color:#555; font-size:14px; margin-bottom:14px; }
+
+  /* Kotak hasil scan */
+  .kartu { border-radius:14px; padding:22px 16px; text-align:center; color:#fff; background:#607d8b; min-height:210px; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:6px; }
+  .kartu.netral { background:#607d8b; }
+  .kartu.hijau  { background:var(--hijau); }
+  .kartu.oranye { background:var(--oranye); }
+  .kartu.biru   { background:var(--biru); }
+  .kartu.merah  { background:var(--merah); }
+  #ikon  { font-size:48px; line-height:1; }
+  #judul { font-size:26px; font-weight:bold; }
+  #nama  { font-size:24px; font-weight:bold; word-break:break-word; }
+  #detail{ font-size:16px; opacity:.95; }
+  .btn { display:inline-block; border:0; border-radius:10px; padding:12px 16px; font-size:16px; cursor:pointer; text-decoration:none; }
+
+  /* Kolom input scanner USB / ketik manual */
+  input[type=text], input[type=password] { width:100%; margin-top:14px; padding:14px; font-size:18px; border:2px solid #b0bec5; border-radius:10px; }
+  input:focus { outline:3px solid #a5d6a7; border-color:var(--hijau); }
+  .baris { display:flex; gap:8px; margin-top:10px; }
+  .baris .btn { flex:1; background:var(--hijau); color:#fff; }
+  #btnKamera { background:#37474f; }
+  #reader { margin-top:12px; border-radius:10px; overflow:hidden; }
+
+  h3 { margin:20px 0 6px; font-size:16px; }
+  ul { list-style:none; padding:0; margin:0; }
+  li { background:#fff; border-radius:8px; padding:9px 12px; margin-bottom:6px; font-size:14px; display:flex; justify-content:space-between; gap:8px; border-left:6px solid #90a4ae; }
+  li.hijau{border-color:var(--hijau);} li.oranye{border-color:var(--oranye);} li.biru{border-color:var(--biru);} li.merah{border-color:var(--merah);}
+  @media (prefers-reduced-motion: no-preference) { .kartu { transition: background .15s; } }
+</style>
+</head>
+<body>
+
+<h1 id="sekolah">Absensi Siswa</h1>
+<div class="sub">Absensi siswa &middot; <span id="jam"></span></div>
+
+<!-- Hasil scan tampil di sini -->
+<div id="hasil" class="kartu netral" aria-live="polite">
+  <div id="ikon">&#128247;</div>
+  <div id="judul">Siap scan</div>
+  <div id="nama"></div>
+  <div id="detail">Arahkan scanner ke kartu, atau buka kamera.</div>
+</div>
+
+<!-- Scanner USB bekerja seperti keyboard: kode diketik lalu Enter -->
+<input type="text" id="kode" placeholder="Scanner USB / ketik NIS lalu Enter" autocomplete="off" autofocus>
+<input type="password" id="pin" placeholder="PIN petugas" autocomplete="off" style="display:none">
+
+<div class="baris">
+  <button class="btn" id="btnKirim">Catat</button>
+  <button class="btn" id="btnKamera">Buka kamera</button>
+</div>
+<div id="reader"></div>
+
+<h3>Scan terakhir</h3>
+<ul id="riwayat"></ul>
+
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script>
+  // ====== PENGATURAN: alamat web app Apps Script Anda (berakhiran /exec) ======
+  var APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwwWu-qgXo9ozJIEdmkI8_W43tDt6TaLvD2l2-lmgjpxhOi6IPuppN_YZTOkc4n5TneKg/exec';
+  // ============================================================================
+
+  // ---------- Tampilan ----------
+  // Teks dan warna untuk tiap jenis hasil
+  var TAMPIL = {
+    HADIR:         ['\u2705', 'HADIR',              'hijau'],
+    TERLAMBAT:     ['\u26A0\uFE0F', 'TERLAMBAT',    'oranye'],
+    SUDAH:         ['\u2139\uFE0F', 'SUDAH ABSEN',  'biru'],
+    TIDAK_DIKENAL: ['\u274C', 'KODE TIDAK DIKENAL', 'merah'],
+    PIN_SALAH:     ['\uD83D\uDD12', 'PIN SALAH',    'merah'],
+    ERROR:         ['\u274C', 'ADA MASALAH',        'merah']
+  };
+  var $ = function (id) { return document.getElementById(id); };
+  var timerReset = null;
+
+  setInterval(function () { $('jam').textContent = new Date().toLocaleTimeString('id-ID'); }, 1000);
+
+  function tampilkan(h) {
+    var t = TAMPIL[h.tipe] || TAMPIL.ERROR;
+    $('hasil').className = 'kartu ' + t[2];
+    $('ikon').textContent = t[0];
+    $('judul').textContent = t[1];
+    $('nama').textContent = h.nama || '';
+    $('detail').textContent = (h.kelas ? 'Kelas ' + h.kelas + ' \u2022 ' : '') + (h.pesan || '');
+    bunyi(h.tipe);
+
+    // Tambah ke daftar riwayat (maksimal 8)
+    var li = document.createElement('li');
+    li.className = t[2];
+    li.innerHTML = '<span></span><b></b>';
+    li.children[0].textContent = new Date().toLocaleTimeString('id-ID') + ' ' + (h.nama || h.pesan || '');
+    li.children[1].textContent = t[1];
+    $('riwayat').insertBefore(li, $('riwayat').firstChild);
+    while ($('riwayat').children.length > 8) $('riwayat').removeChild($('riwayat').lastChild);
+
+    // Kembali ke tampilan siap scan setelah 8 detik
+    clearTimeout(timerReset);
+    timerReset = setTimeout(function () {
+      $('hasil').className = 'kartu netral';
+      $('ikon').textContent = '\uD83D\uDCF7';
+      $('judul').textContent = 'Siap scan';
+      $('nama').textContent = '';
+      $('detail').textContent = 'Arahkan scanner ke kartu, atau buka kamera.';
+    }, 8000);
+  }
+
+  function bunyi(tipe) {
+    try {
+      var c = new (window.AudioContext || window.webkitAudioContext)();
+      var o = c.createOscillator();
+      o.frequency.value = tipe === 'HADIR' ? 880 : (tipe === 'TERLAMBAT' || tipe === 'SUDAH') ? 600 : 220;
+      o.connect(c.destination); o.start();
+      setTimeout(function () { o.stop(); c.close(); }, tipe === 'HADIR' ? 150 : 400);
+    } catch (e) {}
+    if (navigator.vibrate) navigator.vibrate(tipe === 'HADIR' ? 100 : 300);
+  }
+
+  // ---------- Kirim kode ke Google Sheets ----------
+  // Mengirim data ke Apps Script. Tipe text/plain dipakai agar browser tidak meminta izin CORS awal.
+  function panggil(data) {
+    return fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(data)
+    }).then(function (r) { return r.json(); });
+  }
+
+  // Ambil nama sekolah dan status PIN saat halaman dibuka
+  panggil({ aksi: 'info' }).then(function (i) {
+    if (i.sekolah) { $('sekolah').textContent = i.sekolah; document.title = 'Scan ' + i.sekolah; }
+    if (i.perluPin && $('pin')) $('pin').style.display = 'block';
+  }).catch(function () {
+    tampilkan({ tipe: 'ERROR', pesan: 'Belum terhubung ke Apps Script. Periksa APPS_SCRIPT_URL di index.html dan pastikan sudah deploy versi baru.' });
+  });
+
+  var terakhir = { kode: '', waktu: 0 };
+
+  function kirim(kode, dariKamera) {
+    kode = (kode || '').trim();
+    if (!kode) return;
+    // Kamera membaca berkali-kali; abaikan kode yang sama dalam 4 detik
+    var sekarang = Date.now();
+    if (dariKamera && kode === terakhir.kode && sekarang - terakhir.waktu < 4000) return;
+    terakhir = { kode: kode, waktu: sekarang };
+
+    $('judul').textContent = 'Memproses...';
+    var pin = $('pin') ? $('pin').value : '';
+    panggil({ kode: kode, pin: pin })
+      .then(tampilkan)
+      .catch(function (err) {
+        tampilkan({ tipe: 'ERROR', pesan: 'Tidak bisa terhubung ke server absensi. Periksa internet dan link Apps Script. (' + (err.message || err) + ')' });
+      });
+  }
+
+  // Scanner USB mengirim kode + Enter
+  $('kode').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { kirim(this.value, false); this.value = ''; }
+  });
+  $('btnKirim').addEventListener('click', function () { kirim($('kode').value, false); $('kode').value = ''; fokus(); });
+
+  function fokus() { if (!kameraAktif) $('kode').focus(); }
+  // Fokus kembali ke kolom input supaya scanner USB langsung bisa dipakai
+  document.addEventListener('click', function (e) {
+    if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'A') fokus();
+  });
+
+  // Simpan PIN di perangkat ini agar tidak perlu mengetik ulang
+  if ($('pin')) {
+    try { $('pin').value = localStorage.getItem('pinAbsensi') || ''; } catch (e) {}
+    $('pin').addEventListener('change', function () { try { localStorage.setItem('pinAbsensi', this.value); } catch (e) {} });
+  }
+
+  // ---------- Kamera ----------
+  var kameraAktif = false, qr = null;
+
+  $('btnKamera').addEventListener('click', function () {
+    if (kameraAktif) { tutupKamera(); } else { bukaKamera(); }
+  });
+
+  function bukaKamera() {
+    qr = new Html5Qrcode('reader', { formatsToSupport: [Html5QrcodeSupportedFormats.CODE_128], verbose: false });
+    qr.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 280, height: 120 } },
+      function (teks) { kirim(teks, true); }, function () {})
+      .then(function () { kameraAktif = true; $('btnKamera').textContent = 'Tutup kamera'; })
+      .catch(function (err) {
+        tampilkan({ tipe: 'ERROR', pesan: 'Kamera tidak bisa dibuka (' + err + '). Buka link ini langsung di Chrome, izinkan kamera, atau pakai scanner USB.' });
+      });
+  }
+
+  function tutupKamera() {
+    qr.stop().then(function () { qr.clear(); kameraAktif = false; $('btnKamera').textContent = 'Buka kamera'; fokus(); });
+  }
+</script>
+</body>
+</html>
