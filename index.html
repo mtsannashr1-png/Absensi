@@ -190,8 +190,8 @@
   });
 
   function bukaKamera() {
-    qr = new Html5Qrcode('reader', { formatsToSupport: [Html5QrcodeSupportedFormats.CODE_128], verbose: false });
-    qr.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 280, height: 120 } },
+    qr = new Html5Qrcode('reader', { formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE, Html5QrcodeSupportedFormats.CODE_128], verbose: false });
+    qr.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 250, height: 250 } },
       function (teks) { kirim(teks, true); }, function () {})
       .then(function () { kameraAktif = true; $('btnKamera').textContent = 'Tutup kamera'; })
       .catch(function (err) {
