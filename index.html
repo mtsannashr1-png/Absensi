@@ -23,6 +23,7 @@
   #judul { font-size:26px; font-weight:bold; }
   #nama  { font-size:24px; font-weight:bold; word-break:break-word; }
   #detail{ font-size:16px; opacity:.95; }
+  #notif { font-size:14px; opacity:.95; margin-top:4px; }
   .btn { display:inline-block; border:0; border-radius:10px; padding:12px 16px; font-size:16px; cursor:pointer; text-decoration:none; }
 
   /* Kolom input scanner USB / ketik manual */
@@ -51,6 +52,7 @@
   <div id="judul">Siap scan</div>
   <div id="nama"></div>
   <div id="detail">Arahkan scanner ke kartu, atau buka kamera.</div>
+  <div id="notif"></div>
 </div>
 
 <!-- Scanner USB bekerja seperti keyboard: kode diketik lalu Enter -->
@@ -69,7 +71,7 @@
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script>
   // ====== PENGATURAN: alamat web app Apps Script Anda (berakhiran /exec) ======
-  var APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwwWu-qgXo9ozJIEdmkI8_W43tDt6TaLvD2l2-lmgjpxhOi6IPuppN_YZTOkc4n5TneKg/exec';
+  var APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwSrvEOTxMNO93x23Et6fg34fYH0ExV5R7HhHGu5AKtboSgnGW-fThk-p683HgXUNmy/exec';
   // ============================================================================
 
   // ---------- Tampilan ----------
@@ -94,6 +96,7 @@
     $('judul').textContent = t[1];
     $('nama').textContent = h.nama || '';
     $('detail').textContent = (h.kelas ? 'Kelas ' + h.kelas + ' \u2022 ' : '') + (h.pesan || '');
+    $('notif').textContent = h.notif || '';
     bunyi(h.tipe);
 
     // Tambah ke daftar riwayat (maksimal 8)
@@ -113,6 +116,7 @@
       $('judul').textContent = 'Siap scan';
       $('nama').textContent = '';
       $('detail').textContent = 'Arahkan scanner ke kartu, atau buka kamera.';
+      $('notif').textContent = '';
     }, 8000);
   }
 
