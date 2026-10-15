@@ -18,6 +18,7 @@
   .kartu.hijau  { background:var(--hijau); }
   .kartu.oranye { background:var(--oranye); }
   .kartu.biru   { background:var(--biru); }
+  .kartu.ungu   { background:#6a1b9a; }
   .kartu.merah  { background:var(--merah); }
   #ikon  { font-size:48px; line-height:1; }
   #judul { font-size:26px; font-weight:bold; }
@@ -34,6 +35,10 @@
   #btnKamera { background:#37474f; }
   #reader { margin-top:12px; border-radius:10px; overflow:hidden; }
 
+  .mode .btn { background:#cfd8dc; color:#263238; }
+  .mode .btn.aktif { background:var(--hijau); color:#fff; }
+  .mode #modePulang.aktif { background:#6a1b9a; }
+  #alasan { width:100%; margin-top:10px; padding:12px; font-size:17px; border:2px solid #6a1b9a; border-radius:10px; background:#fff; color:#1b1b1b; }
   h3 { margin:20px 0 6px; font-size:16px; }
   ul { list-style:none; padding:0; margin:0; }
   li { background:#fff; border-radius:8px; padding:9px 12px; margin-bottom:6px; font-size:14px; display:flex; justify-content:space-between; gap:8px; border-left:6px solid #90a4ae; }
@@ -59,6 +64,15 @@
 <input type="text" id="kode" placeholder="Scanner USB / ketik NIS lalu Enter" autocomplete="off" autofocus>
 <input type="password" id="pin" placeholder="PIN petugas" autocomplete="off" style="display:none">
 
+<div class="baris mode">
+  <button class="btn aktif" id="modeMasuk">Masuk</button>
+  <button class="btn" id="modePulang">Pulang awal</button>
+</div>
+<select id="alasan" style="display:none">
+  <option>Sakit</option>
+  <option>Keperluan keluarga</option>
+  <option>Lainnya</option>
+</select>
 <div class="baris">
   <button class="btn" id="btnKirim">Catat</button>
   <button class="btn" id="btnKamera">Buka kamera</button>
@@ -79,7 +93,8 @@
   var TAMPIL = {
     HADIR:         ['\u2705', 'HADIR',              'hijau'],
     TERLAMBAT:     ['\u26A0\uFE0F', 'TERLAMBAT',    'oranye'],
-    SUDAH:         ['\u2139\uFE0F', 'SUDAH ABSEN',  'biru'],
+    SUDAH:         ['\u2139\uFE0F', 'SUDAH TERCATAT',  'biru'],
+    PULANG:        ['\uD83C\uDFE0', 'PULANG AWAL', 'ungu'],
     TIDAK_DIKENAL: ['\u274C', 'KODE TIDAK DIKENAL', 'merah'],
     PIN_SALAH:     ['\uD83D\uDD12', 'PIN SALAH',    'merah'],
     ERROR:         ['\u274C', 'ADA MASALAH',        'merah']
@@ -124,7 +139,7 @@
     try {
       var c = new (window.AudioContext || window.webkitAudioContext)();
       var o = c.createOscillator();
-      o.frequency.value = tipe === 'HADIR' ? 880 : (tipe === 'TERLAMBAT' || tipe === 'SUDAH') ? 600 : 220;
+      o.frequency.value = tipe === 'HADIR' ? 880 : (tipe === 'TERLAMBAT' || tipe === 'SUDAH' || tipe === 'PULANG') ? 600 : 220;
       o.connect(c.destination); o.start();
       setTimeout(function () { o.stop(); c.close(); }, tipe === 'HADIR' ? 150 : 400);
     } catch (e) {}
@@ -149,6 +164,20 @@
     tampilkan({ tipe: 'ERROR', pesan: 'Belum terhubung ke Apps Script. Periksa APPS_SCRIPT_URL di index.html dan pastikan sudah deploy versi baru.' });
   });
 
+
+  // ---------- Mode: Masuk atau Pulang awal ----------
+  // Mode pulang awal otomatis kembali ke Masuk setelah satu kali scan.
+  var mode = 'masuk';
+  function aturMode(m) {
+    mode = m;
+    $('modeMasuk').className = 'btn' + (m === 'masuk' ? ' aktif' : '');
+    $('modePulang').className = 'btn' + (m === 'pulang' ? ' aktif' : '');
+    $('alasan').style.display = (m === 'pulang') ? 'block' : 'none';
+    $('kode').placeholder = (m === 'pulang') ? 'Scan kartu siswa yang pulang awal' : 'Scanner USB / ketik NIS lalu Enter';
+  }
+  $('modeMasuk').addEventListener('click', function () { aturMode('masuk'); fokus(); });
+  $('modePulang').addEventListener('click', function () { aturMode('pulang'); fokus(); });
+
   var terakhir = { kode: '', waktu: 0 };
 
   function kirim(kode, dariKamera) {
@@ -161,8 +190,12 @@
 
     $('judul').textContent = 'Memproses...';
     var pin = $('pin') ? $('pin').value : '';
-    panggil({ kode: kode, pin: pin })
-      .then(tampilkan)
+    var modeSaatIni = mode;
+    var data = (modeSaatIni === 'pulang')
+      ? { aksi: 'pulang', kode: kode, alasan: $('alasan').value, pin: pin }
+      : { kode: kode, pin: pin };
+    panggil(data)
+      .then(function (h) { tampilkan(h); if (modeSaatIni === 'pulang') aturMode('masuk'); })
       .catch(function (err) {
         tampilkan({ tipe: 'ERROR', pesan: 'Tidak bisa terhubung ke server absensi. Periksa internet dan link Apps Script. (' + (err.message || err) + ')' });
       });
